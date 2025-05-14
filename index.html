@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教室安静种树游戏</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            background-color: #f0f8ff;
+            margin: 0;
+            padding: 20px;
+        }
+        #container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        #tree-display {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            min-height: 200px;
+            margin: 20px 0;
+            gap: 10px;
+        }
+        .tree {
+            width: 80px;
+            height: 100px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: bottom;
+            transition: all 0.5s;
+        }
+        .sapling {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><path d="M50 20 L60 50 L40 50 Z" fill="%234CAF50"/><path d="M50 30 L70 70 L30 70 Z" fill="%238BC34A"/><path d="M50 50 L80 100 L20 100 Z" fill="%234CAF50"/><rect x="45" y="100" width="10" height="50" fill="%238B4513"/></svg>');
+        }
+        .big-tree {
+            width: 150px;
+            height: 200px;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 200"><path d="M75 20 L90 60 L60 60 Z" fill="%232E8B57"/><path d="M75 40 L105 90 L45 90 Z" fill="%234CAF50"/><path d="M75 70 L120 140 L30 140 Z" fill="%238BC34A"/><rect x="70" y="140" width="10" height="60" fill="%238B4513"/></svg>');
+        }
+        #controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e9f5e9;
+            border-radius: 8px;
+        }
+        #status {
+            margin: 15px 0;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        #db-level {
+            font-size: 28px;
+            color: #2e8b57;
+            font-weight: bold;
+        }
+        #timer {
+            font-size: 24px;
+            color: #FF5722;
+        }
+        #progress-container {
+            width: 100%;
+            background-color: #ddd;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        #progress-bar {
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.5s;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 0 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .warning {
+            color: #FF5722;
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse {
+            from { opacity: 1; }
+            to { opacity: 0.5; }
+        }
+        .success {
+            color: #4CAF50;
+            animation: grow 0.5s;
+        }
+        @keyframes grow {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>教室安静种树游戏</h1>
+        <p>当教室音量低于80分贝时，计时开始。保持安静时间可以种树！</p>
+        
+        <div id="controls">
+            <button id="startBtn">开始游戏</button>
+            <button id="resetBtn">重置</button>
+        </div>
+        
+        <div id="status">
+            当前分贝: <span id="db-level">--</span>
+            <div id="timer">安静时间: 0秒</div>
+        </div>
+        
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        
+        <div id="message"></div>
+        
+        <h2>你的森林</h2>
+        <div id="tree-display"></div>
+    </div>
+
+    <script>
+        // 游戏状态
+        const state = {
+            isRunning: false,
+            dbLevel: 0,
+            quietTime: 0,
+            timerInterval: null,
+            checkInterval: null,
+            saplings: 0,
+            trees: 0,
+            noisyTime: 0
+        };
+
+        // DOM 元素
+        const elements = {
+            startBtn: document.getElementById('startBtn'),
+            resetBtn: document.getElementById('resetBtn'),
+            dbLevel: document.getElementById('db-level'),
+            timer: document.getElementById('timer'),
+            progressBar: document.getElementById('progress-bar'),
+            message: document.getElementById('message'),
+            treeDisplay: document.getElementById('tree-display')
+        };
+
+        // 音频分析变量
+        let audioContext;
+        let analyser;
+        let microphone;
+        let scriptProcessor;
+
+        // 开始游戏
+        elements.startBtn.addEventListener('click', startGame);
+        elements.resetBtn.addEventListener('click', resetGame);
+
+        function startGame() {
+            if (state.isRunning) return;
+            
+            state.isRunning = true;
+            elements.startBtn.disabled = true;
+            elements.message.textContent = '正在访问麦克风...';
+            elements.message.className = '';
+            
+            // 初始化音频上下文
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            
+            // 获取麦克风输入
+            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(function(stream) {
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+                    
+                    microphone.connect(analyser);
+                    analyser.connect(scriptProcessor);
+                    scriptProcessor.connect(audioContext.destination);
+                    
+                    scriptProcessor.onaudioprocess = processAudio;
+                    
+                    elements.message.textContent = '游戏进行中...';
+                    elements.message.className = '';
+                    
+                    // 开始计时器
+                    state.timerInterval = setInterval(updateTimer, 1000);
+                    state.checkInterval = setInterval(checkDbLevel, 100);
+                })
+                .catch(function(err) {
+                    elements.message.textContent = '无法访问麦克风: ' + err.message;
+                    elements.message.className = 'warning';
+                    resetGame();
+                });
+        }
+
+        function processAudio() {
+            const array = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(array);
+            
+            let values = 0;
+            const length = array.length;
+            
+            for (let i = 0; i < length; i++) {
+                values += array[i];
+            }
+            
+            // 计算平均分贝值 (简化计算)
+            const average = values / length;
+            state.dbLevel = Math.round(average / 2); // 调整比例使其更接近实际分贝范围
+            
+            elements.dbLevel.textContent = state.dbLevel;
+            
+            if (state.dbLevel > 80) {
+                elements.dbLevel.className = 'warning';
+            } else {
+                elements.dbLevel.className = '';
+            }
+        }
+
+        function updateTimer() {
+            if (state.dbLevel < 80) {
+                state.quietTime++;
+                state.noisyTime = 0;
+                
+                // 更新进度条
+                const progress = (state.quietTime % 60) / 60 * 100;
+                elements.progressBar.style.width = progress + '%';
+                
+                // 每60秒奖励一棵树苗
+                if (state.quietTime % 60 === 0) {
+                    addSapling();
+                }
+            } else {
+                state.noisyTime++;
+                state.quietTime = 0;
+                elements.progressBar.style.width = '0%';
+                
+                // 如果噪音持续30秒，减少一棵树苗
+                if (state.noisyTime >= 30 && state.saplings > 0) {
+                    removeSapling();
+                    state.noisyTime = 0; // 重置噪音计时器
+                }
+            }
+            
+            elements.timer.textContent = `安静时间: ${state.quietTime}秒`;
+        }
+
+        function checkDbLevel() {
+            // 可以在这里添加额外的检查逻辑
+        }
+
+        function addSapling() {
+            state.saplings++;
+            updateTreeDisplay();
+            
+            // 显示消息
+            elements.message.textContent = `恭喜！你获得了一棵小树苗！ (${state.saplings}/10)`;
+            elements.message.className = 'success';
+            
+            // 10棵树苗变成1棵大树
+            if (state.saplings >= 10) {
+                state.saplings -= 10;
+                state.trees++;
+                elements.message.textContent = '太棒了！一棵小树苗已经长成大树了！';
+                updateTreeDisplay();
+            }
+            
+            // 3秒后清除消息
+            setTimeout(() => {
+                elements.message.textContent = '';
+                elements.message.className = '';
+            }, 3000);
+        }
+
+        function removeSapling() {
+            state.saplings--;
+            if (state.saplings < 0) state.saplings = 0;
+            updateTreeDisplay();
+            
+            // 显示警告消息
+            elements.message.textContent = `教室太吵了！失去了一棵小树苗。 (剩余: ${state.saplings})`;
+            elements.message.className = 'warning';
+            
+            // 3秒后清除消息
+            setTimeout(() => {
+                elements.message.textContent = '';
+                elements.message.className = '';
+            }, 3000);
+        }
+
+        function updateTreeDisplay() {
+            // 清空显示
+            elements.treeDisplay.innerHTML = '';
+            
+            // 显示大树
+            for (let i = 0; i < state.trees; i++) {
+                const tree = document.createElement('div');
+                tree.className = 'tree big-tree';
+                elements.treeDisplay.appendChild(tree);
+            }
+            
+            // 显示小树苗
+            for (let i = 0; i < state.saplings; i++) {
+                const sapling = document.createElement('div');
+                sapling.className = 'tree sapling';
+                elements.treeDisplay.appendChild(sapling);
+            }
+        }
+
+        function resetGame() {
+            // 清除计时器
+            clearInterval(state.timerInterval);
+            clearInterval(state.checkInterval);
+            
+            // 断开音频连接
+            if (scriptProcessor) {
+                scriptProcessor.disconnect();
+            }
+            if (analyser) {
+                analyser.disconnect();
+            }
+            if (microphone) {
+                microphone.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            
+            // 重置状态
+            state.isRunning = false;
+            state.dbLevel = 0;
+            state.quietTime = 0;
+            state.noisyTime = 0;
+            state.saplings = 0;
+            state.trees = 0;
+            
+            // 重置UI
+            elements.startBtn.disabled = false;
+            elements.dbLevel.textContent = '--';
+            elements.timer.textContent = '安静时间: 0秒';
+            elements.progressBar.style.width = '0%';
+            elements.message.textContent = '';
+            elements.message.className = '';
+            elements.dbLevel.className = '';
+            
+            updateTreeDisplay();
+        }
+
+        // 初始化
+        updateTreeDisplay();
+    </script>
+</body>
+</html>
