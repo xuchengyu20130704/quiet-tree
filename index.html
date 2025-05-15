@@ -108,12 +108,37 @@
             50% { transform: scale(1.2); }
             100% { transform: scale(1); }
         }
+        .slider-container {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #e9f5e9;
+            border-radius: 8px;
+        }
+        .slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
     <div id="container">
         <h1>教室安静种树游戏</h1>
-        <p>当教室音量低于80分贝时，计时开始。保持安静时间可以种树！</p>
+        <p>当教室音量低于设定分贝上限时，计时开始。保持安静时间可以种树！</p>
+        
+        <div class="slider-container">
+            <label for="dbThreshold">分贝上限: <span id="dbThresholdValue">80</span> dB</label>
+            <input type="range" id="dbThreshold" class="slider" min="50" max="100" value="80">
+            <div class="slider-labels">
+                <span>50</span>
+                <span>75</span>
+                <span>100</span>
+            </div>
+        </div>
         
         <div id="controls">
             <button id="startBtn">开始游戏</button>
@@ -145,7 +170,8 @@
             checkInterval: null,
             saplings: 0,
             trees: 0,
-            noisyTime: 0
+            noisyTime: 0,
+            dbThreshold: 80
         };
 
         // DOM 元素
@@ -156,7 +182,9 @@
             timer: document.getElementById('timer'),
             progressBar: document.getElementById('progress-bar'),
             message: document.getElementById('message'),
-            treeDisplay: document.getElementById('tree-display')
+            treeDisplay: document.getElementById('tree-display'),
+            dbThreshold: document.getElementById('dbThreshold'),
+            dbThresholdValue: document.getElementById('dbThresholdValue')
         };
 
         // 音频分析变量
@@ -168,6 +196,12 @@
         // 开始游戏
         elements.startBtn.addEventListener('click', startGame);
         elements.resetBtn.addEventListener('click', resetGame);
+        
+        // 分贝阈值滑块事件
+        elements.dbThreshold.addEventListener('input', function() {
+            state.dbThreshold = parseInt(this.value);
+            elements.dbThresholdValue.textContent = this.value;
+        });
 
         function startGame() {
             if (state.isRunning) return;
@@ -225,7 +259,7 @@
             
             elements.dbLevel.textContent = state.dbLevel;
             
-            if (state.dbLevel > 80) {
+            if (state.dbLevel > state.dbThreshold) {
                 elements.dbLevel.className = 'warning';
             } else {
                 elements.dbLevel.className = '';
@@ -233,7 +267,7 @@
         }
 
         function updateTimer() {
-            if (state.dbLevel < 80) {
+            if (state.dbLevel < state.dbThreshold) {
                 state.quietTime++;
                 state.noisyTime = 0;
                 
@@ -360,7 +394,6 @@
             
             updateTreeDisplay();
         }
-
         // 初始化
         updateTreeDisplay();
     </script>
