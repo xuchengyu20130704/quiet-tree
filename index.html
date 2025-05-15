@@ -132,10 +132,10 @@
         
         <div class="slider-container">
             <label for="dbThreshold">分贝上限: <span id="dbThresholdValue">80</span> dB</label>
-            <input type="range" id="dbThreshold" class="slider" min="50" max="100" value="80">
+            <input type="range" id="dbThreshold" class="slider" min="0" max="100" value="80">
             <div class="slider-labels">
+                <span>0</span>
                 <span>50</span>
-                <span>75</span>
                 <span>100</span>
             </div>
         </div>
@@ -256,6 +256,9 @@
             // 计算平均分贝值 (简化计算)
             const average = values / length;
             state.dbLevel = Math.round(average / 2); // 调整比例使其更接近实际分贝范围
+            
+            // 确保分贝值不低于0
+            state.dbLevel = Math.max(0, state.dbLevel);
             
             elements.dbLevel.textContent = state.dbLevel;
             
